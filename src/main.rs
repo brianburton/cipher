@@ -1,3 +1,4 @@
+use base64::{DecodeError, Engine as _, engine::general_purpose::URL_SAFE};
 use derive_getters::Getters;
 use im::{Vector, vector};
 use lazy_static::lazy_static;
@@ -6,12 +7,14 @@ use regex::Regex;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs;
+use std::rc::Rc;
+use std::string::FromUtf8Error;
 
 lazy_static! {
     static ref MARKER_RE: Regex = Regex::new(r"<<(/?(SECURE|CIPHER))>>").unwrap();
 }
 
-#[derive(Debug, Getters, PartialEq)]
+#[derive(Debug, Getters, PartialEq, Clone)]
 pub struct AppError {
     context: String,
     detail: String,
@@ -51,6 +54,18 @@ impl From<std::io::Error> for AppError {
     }
 }
 
+impl From<DecodeError> for AppError {
+    fn from(error: DecodeError) -> Self {
+        AppError::from_error("base64 decode error", &error)
+    }
+}
+
+impl From<FromUtf8Error> for AppError {
+    fn from(error: FromUtf8Error) -> Self {
+        AppError::from_error("utf8 decode error", &error)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum Segment {
     Plain(String),
@@ -58,10 +73,52 @@ enum Segment {
     Content(String),
 }
 
-fn parse_source(source: String) -> Result<Vector<Segment>, AppError> {
+type SegmentMap = Vector<Rc<Segment>>;
+type CipherFn<'a> = dyn Fn(&String) -> Result<String, AppError> + 'a;
+
+fn base64_encode(source: &String) -> Result<String, AppError> {
+    let r = URL_SAFE.encode(source.as_bytes());
+    Ok(r)
+}
+
+fn base64_decode(source: &String) -> Result<String, AppError> {
+    let v = URL_SAFE.decode(source.as_bytes())?;
+    let s = String::from_utf8(v)?;
+    Ok(s)
+}
+
+fn encrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> {
+    let mut answer: SegmentMap = Vector::new();
+    for seg in segments.iter() {
+        match seg.as_ref() {
+            Segment::Plain(plain) => {
+                let cipher = op(plain)?;
+                answer.push_back(Rc::new(Segment::Cipher(cipher)));
+            }
+            _ => answer.push_back(Rc::clone(seg)),
+        }
+    }
+    Ok(answer)
+}
+
+fn decrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> {
+    let mut answer: SegmentMap = Vector::new();
+    for seg in segments.iter() {
+        match seg.as_ref() {
+            Segment::Cipher(cipher) => {
+                let plain = op(cipher)?;
+                answer.push_back(Rc::new(Segment::Plain(plain)));
+            }
+            _ => answer.push_back(Rc::clone(seg)),
+        }
+    }
+    Ok(answer)
+}
+
+fn parse_source(source: String) -> Result<SegmentMap, AppError> {
     let mut offset: usize = 0;
     let mut expected: Option<String> = None;
-    let mut answer = Vector::<Segment>::new();
+    let mut answer = Vector::<Rc<Segment>>::new();
     loop {
         match MARKER_RE.captures_at(source.as_str(), offset) {
             Some(captures) => {
@@ -77,16 +134,18 @@ fn parse_source(source: String) -> Result<Vector<Segment>, AppError> {
                                 format!("expected {} but found {}", s, marker).as_str(),
                             ));
                         }
-                        if s == "/SECURE" {
-                            answer.push_back(Segment::Plain(content));
+                        let segment = if s == "/SECURE" {
+                            Segment::Plain(content)
                         } else {
-                            answer.push_back(Segment::Cipher(content));
-                        }
+                            Segment::Cipher(content)
+                        };
+                        answer.push_back(Rc::new(segment));
                         expected = None
                     }
                     None => {
                         if content != "" {
-                            answer.push_back(Segment::Content(content));
+                            let segment = Segment::Content(content);
+                            answer.push_back(Rc::new(segment));
                         }
                         if marker == "SECURE" {
                             expected = Some("/SECURE".to_string())
@@ -105,11 +164,13 @@ fn parse_source(source: String) -> Result<Vector<Segment>, AppError> {
                 if let Some(s) = expected {
                     return Err(AppError::from_str(
                         "parsing",
-                        format!("expected {} but end of string", s).as_str(),
+                        format!("expected {} but found end of string", s).as_str(),
                     ));
                 }
                 if offset < source.len() {
-                    answer.push_back(Segment::Content(source[offset..].to_string()));
+                    let text = source[offset..].to_string();
+                    let segment = Segment::Content(text);
+                    answer.push_back(Rc::new(segment));
                 }
                 break;
             }
@@ -118,7 +179,7 @@ fn parse_source(source: String) -> Result<Vector<Segment>, AppError> {
     Ok(answer)
 }
 
-fn load_file(filename: &str) -> Result<Vector<Segment>, AppError> {
+fn load_file(filename: &str) -> Result<Vector<Rc<Segment>>, AppError> {
     let source = fs::read_to_string(filename)?;
     parse_source(source)
 }
@@ -145,12 +206,22 @@ To tell your name the livelong day<</CIPHER>>
 To an admiring bog!"
             .to_string();
         let answer = parse_source(source).unwrap();
-        assert_eq!(vector!(Segment::Plain("I'm nobody! ".to_string()), 
+        let expected: SegmentMap = vector!(Segment::Plain("I'm nobody! ".to_string()),
             Segment::Content("Who are you?\nAre you nobody, too?\nThen there's a ".to_string()),
             Segment::Plain("pair of us - don't tell!".to_string()),
             Segment::Content("\nThey'd banish us, you know.\n\n".to_string()),
             Segment::Cipher("How dreary to be somebody!\nHow public, like a frog\nTo tell your name the livelong day".to_string()),
             Segment::Content("\nTo an admiring bog!".to_string())
-), answer);
+        ).iter().map(|s| Rc::new(s.clone())).collect();
+        assert_eq!(expected, answer);
+    }
+
+    #[test]
+    fn test_base64() {
+        let source = "hello world".to_string();
+        let encoded = base64_encode(&source).unwrap();
+        assert_eq!(encoded, "aGVsbG8gd29ybGQ=".to_string());
+        let decoded = base64_decode(&encoded).unwrap();
+        assert_eq!(source, decoded);
     }
 }
