@@ -72,13 +72,13 @@ impl From<FromUtf8Error> for AppError {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum Segment {
+pub enum Segment {
     Secure(String),
     Cipher(String),
     Text(String),
 }
 
-type SegmentMap = Vector<Rc<Segment>>;
+pub type SegmentMap = Vector<Rc<Segment>>;
 type CipherFn<'a> = dyn Fn(&String) -> Result<String, AppError> + 'a;
 
 fn random_chars() -> String {
@@ -290,5 +290,13 @@ fn delete_file(temp_file: &str) -> Result<(), AppError> {
     if exists(temp_file)? {
         fs::remove_file(temp_file)?;
     }
+    Ok(())
+}
+
+pub fn cat_command(input_filename: &String) -> Result<(), AppError> {
+    let segments = load_file(input_filename)?;
+    let decrypted = decrypt(segments, &|s| base64_decode(s))?;
+    let expanded = expand(decrypted)?;
+    print!("{}", expanded);
     Ok(())
 }
