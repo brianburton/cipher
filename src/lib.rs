@@ -306,6 +306,19 @@ pub fn cat_command(input_filename: &String) -> Result<(), AppError> {
     Ok(())
 }
 
+pub fn decrypt_command(input_filename: &String, output_filename: &String) -> Result<(), AppError> {
+    let segments = load_file(input_filename)?;
+    let decrypted = decrypt(segments, &|s| base64_decode(s))?;
+    let expanded = expand(decrypted)?;
+    let temp_filename = create_temp_file(input_filename)?;
+    defer! {
+        delete_file(&temp_filename).unwrap_or(());
+    }
+    write_file(&temp_filename, &expanded)?;
+    replace_file(&temp_filename, &output_filename)?;
+    Ok(())
+}
+
 pub fn encrypt_command(input_filename: &String, output_filename: &String) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
     let encrypted = encrypt(segments, &|s| base64_encode(s))?;

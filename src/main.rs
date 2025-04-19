@@ -13,6 +13,14 @@ fn main() -> Result<(), AppError> {
 
     if command.as_str() == "cat" {
         cipher::cat_command(&input_file)
+    } else if command.as_str() == "decrypt" {
+        if input_file == output_file {
+            return Err(AppError::from_str(
+                "usage",
+                "decrypt requires an output file name",
+            ));
+        }
+        cipher::decrypt_command(&input_file, &output_file)
     } else if command.as_str() == "encrypt" {
         cipher::encrypt_command(&input_file, &output_file)
     } else if command.as_str() == "rewind" {
