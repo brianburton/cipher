@@ -15,7 +15,7 @@ To tell your name the livelong day<</CIPHER>>
 To an admiring bog!"
         .to_string();
     let answer = parse_source(source).unwrap();
-    let expected: SegmentMap = vector!(Segment::Secure("I'm nobody! ".to_string()),
+    let expected: Segments = vector!(Segment::Secure("I'm nobody! ".to_string()),
             Segment::Text("Who are you?\nAre you nobody, too?\nThen there's a ".to_string()),
             Segment::Secure("pair of us - don't tell!".to_string()),
             Segment::Text("\nThey'd banish us, you know.\n\n".to_string()),
@@ -23,15 +23,6 @@ To an admiring bog!"
             Segment::Text("\nTo an admiring bog!".to_string())
         ).iter().map(|s| Rc::new(s.clone())).collect();
     assert_eq!(expected, answer);
-}
-
-#[test]
-fn test_base64() {
-    let source = "hello world".to_string();
-    let encoded = base64_encode(&source).unwrap();
-    assert_eq!(encoded, "aGVsbG8gd29ybGQ=".to_string());
-    let decoded = base64_decode(&encoded).unwrap();
-    assert_eq!(source, decoded);
 }
 
 #[test]
@@ -48,7 +39,8 @@ fn test_encrypt() {
         Rc::new(Segment::Cipher("ghi".to_string())),
         Rc::new(Segment::Text("xyz".to_string()))
     );
-    let expanded = encrypt(segments, &|s| base64_encode(s)).unwrap();
+    let system = crate::encryption::new_insecure_encryption().unwrap();
+    let expanded = encrypt(segments, system.as_ref()).unwrap();
     assert_eq!(expanded, expected);
 }
 
@@ -66,7 +58,8 @@ fn test_rewind() {
         Rc::new(Segment::Secure("ghi".to_string())),
         Rc::new(Segment::Text("xyz".to_string()))
     );
-    let expanded = rewind(segments, &|s| base64_decode(s)).unwrap();
+    let system = crate::encryption::new_insecure_encryption().unwrap();
+    let expanded = rewind(segments, system.as_ref()).unwrap();
     assert_eq!(expanded, expected);
 }
 
@@ -84,7 +77,8 @@ fn test_decrypt() {
         Rc::new(Segment::Text("ghi".to_string())),
         Rc::new(Segment::Text("xyz".to_string()))
     );
-    let expanded = decrypt(segments, &|s| base64_decode(s)).unwrap();
+    let system = crate::encryption::new_insecure_encryption().unwrap();
+    let expanded = decrypt(segments, system.as_ref()).unwrap();
     assert_eq!(expanded, expected);
 }
 

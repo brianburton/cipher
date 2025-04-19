@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use base64::{DecodeError, Engine as _, engine::general_purpose::URL_SAFE};
+use crate::encryption::EncryptionSystem;
 use derive_getters::Getters;
 use fs::read_to_string;
 use im::Vector;
@@ -61,12 +61,6 @@ impl From<std::io::Error> for AppError {
     }
 }
 
-impl From<DecodeError> for AppError {
-    fn from(error: DecodeError) -> Self {
-        AppError::from_error("base64 decode error", &error)
-    }
-}
-
 impl From<FromUtf8Error> for AppError {
     fn from(error: FromUtf8Error) -> Self {
         AppError::from_error("utf8 decode error", &error)
@@ -80,8 +74,7 @@ pub enum Segment {
     Text(String),
 }
 
-pub type SegmentMap = Vector<Rc<Segment>>;
-type CipherFn<'a> = dyn Fn(&String) -> Result<String, AppError> + 'a;
+pub type Segments = Vector<Rc<Segment>>;
 
 fn random_chars() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -108,23 +101,12 @@ fn create_temp_file(path: &str) -> Result<String, AppError> {
     Err(AppError::from_str("output", "Failed to create temp file"))
 }
 
-fn base64_encode(source: &String) -> Result<String, AppError> {
-    let r = URL_SAFE.encode(source.as_bytes());
-    Ok(r)
-}
-
-fn base64_decode(source: &String) -> Result<String, AppError> {
-    let v = URL_SAFE.decode(source.as_bytes())?;
-    let s = String::from_utf8(v)?;
-    Ok(s)
-}
-
-fn encrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> {
-    let mut answer: SegmentMap = Vector::new();
+fn encrypt(segments: Segments, system: &dyn EncryptionSystem) -> Result<Segments, AppError> {
+    let mut answer: Segments = Vector::new();
     for seg in segments.iter() {
         match seg.as_ref() {
             Segment::Secure(plain) => {
-                let cipher = op(plain)?;
+                let cipher = system.encrypt(plain)?;
                 answer.push_back(Rc::new(Segment::Cipher(cipher)));
             }
             _ => answer.push_back(Rc::clone(seg)),
@@ -133,12 +115,12 @@ fn encrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> 
     Ok(answer)
 }
 
-fn rewind(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> {
-    let mut answer: SegmentMap = Vector::new();
+fn rewind(segments: Segments, system: &dyn EncryptionSystem) -> Result<Segments, AppError> {
+    let mut answer: Segments = Vector::new();
     for seg in segments.iter() {
         match seg.as_ref() {
             Segment::Cipher(cipher) => {
-                let plain = op(cipher)?;
+                let plain = system.decrypt(cipher)?;
                 answer.push_back(Rc::new(Segment::Secure(plain)));
             }
             _ => answer.push_back(Rc::clone(seg)),
@@ -147,12 +129,12 @@ fn rewind(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> {
     Ok(answer)
 }
 
-fn decrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> {
-    let mut answer: SegmentMap = Vector::new();
+fn decrypt(segments: Segments, system: &dyn EncryptionSystem) -> Result<Segments, AppError> {
+    let mut answer: Segments = Vector::new();
     for seg in segments.iter() {
         match seg.as_ref() {
             Segment::Cipher(cipher) => {
-                let plain = op(cipher)?;
+                let plain = system.decrypt(cipher)?;
                 answer.push_back(Rc::new(Segment::Text(plain)));
             }
             Segment::Secure(plain) => {
@@ -166,7 +148,7 @@ fn decrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> 
 
 /// Converts a vector of segments into a String.  The vector must only contain
 /// Text and Secure segments.
-fn expand(segments: SegmentMap) -> Result<String, AppError> {
+fn expand(segments: Segments) -> Result<String, AppError> {
     let mut answer = String::new();
     for seg in segments.iter() {
         match seg.as_ref() {
@@ -189,7 +171,7 @@ fn expand(segments: SegmentMap) -> Result<String, AppError> {
 
 /// Combines a vector of segments into a String.  Markers are created for
 /// each segment.
-fn combine(segments: SegmentMap) -> Result<String, AppError> {
+fn combine(segments: Segments) -> Result<String, AppError> {
     let mut answer = String::new();
     for seg in segments.iter() {
         match seg.as_ref() {
@@ -211,7 +193,7 @@ fn combine(segments: SegmentMap) -> Result<String, AppError> {
     Ok(answer)
 }
 
-fn parse_source(source: String) -> Result<SegmentMap, AppError> {
+fn parse_source(source: String) -> Result<Segments, AppError> {
     let mut offset: usize = 0;
     let mut expected: Option<String> = None;
     let mut answer = Vector::<Rc<Segment>>::new();
@@ -295,17 +277,21 @@ fn delete_file(temp_file: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn cat_command(input_filename: &str) -> Result<(), AppError> {
+pub fn cat_command(input_filename: &str, system: &dyn EncryptionSystem) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
-    let decrypted = decrypt(segments, &|s| base64_decode(s))?;
+    let decrypted = decrypt(segments, system)?;
     let expanded = expand(decrypted)?;
     print!("{}", expanded);
     Ok(())
 }
 
-pub fn decrypt_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
+pub fn decrypt_command(
+    input_filename: &str,
+    output_filename: &str,
+    system: &dyn EncryptionSystem,
+) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
-    let decrypted = decrypt(segments, &|s| base64_decode(s))?;
+    let decrypted = decrypt(segments, system)?;
     let expanded = expand(decrypted)?;
     let temp_filename = create_temp_file(input_filename)?;
     defer! {
@@ -316,9 +302,13 @@ pub fn decrypt_command(input_filename: &str, output_filename: &str) -> Result<()
     Ok(())
 }
 
-pub fn encrypt_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
+pub fn encrypt_command(
+    input_filename: &str,
+    output_filename: &str,
+    system: &dyn EncryptionSystem,
+) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
-    let encrypted = encrypt(segments, &|s| base64_encode(s))?;
+    let encrypted = encrypt(segments, system)?;
     let contents = combine(encrypted)?;
     let temp_filename = create_temp_file(input_filename)?;
     defer! {
@@ -329,9 +319,13 @@ pub fn encrypt_command(input_filename: &str, output_filename: &str) -> Result<()
     Ok(())
 }
 
-pub fn rewind_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
+pub fn rewind_command(
+    input_filename: &str,
+    output_filename: &str,
+    system: &dyn EncryptionSystem,
+) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
-    let rewound = rewind(segments, &|s| base64_decode(s))?;
+    let rewound = rewind(segments, system)?;
     let contents = combine(rewound)?;
     let temp_filename = create_temp_file(input_filename)?;
     defer! {
@@ -342,10 +336,14 @@ pub fn rewind_command(input_filename: &str, output_filename: &str) -> Result<(),
     Ok(())
 }
 
-pub fn edit_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
+pub fn edit_command(
+    input_filename: &str,
+    output_filename: &str,
+    system: &dyn EncryptionSystem,
+) -> Result<(), AppError> {
     // set up a rewound temp file for the editor
     let orig_segments = load_file(input_filename)?;
-    let orig_rewound = rewind(orig_segments, &|s| base64_decode(s))?;
+    let orig_rewound = rewind(orig_segments, system)?;
     let orig_contents = combine(orig_rewound)?;
     let temp_filename = create_temp_file(input_filename)?;
     defer! {
@@ -361,14 +359,14 @@ pub fn edit_command(input_filename: &str, output_filename: &str) -> Result<(), A
 
     // see if the file was changed
     let new_segments = load_file(&temp_filename)?;
-    let new_rewound = rewind(new_segments.clone(), &|s| base64_decode(s))?;
+    let new_rewound = rewind(new_segments.clone(), system)?;
     let new_contents = combine(new_rewound)?;
     if orig_contents == new_contents {
         return Ok(());
     }
 
     // encrypt the modified temp file and store it as the output file
-    let encrypted = encrypt(new_segments, &|s| base64_encode(s))?;
+    let encrypted = encrypt(new_segments, system)?;
     let encrypted_contents = combine(encrypted)?;
     write_file(&temp_filename, &encrypted_contents)?;
     replace_file(&temp_filename, output_filename)?;
