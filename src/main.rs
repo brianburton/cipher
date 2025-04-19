@@ -25,6 +25,8 @@ fn main() -> Result<(), AppError> {
         cipher::encrypt_command(&input_file, &output_file)
     } else if command.as_str() == "rewind" {
         cipher::rewind_command(&input_file, &output_file)
+    } else if command.as_str() == "edit" {
+        cipher::edit_command(&input_file, &output_file)
     } else {
         Err(AppError::from_str(
             "usage",

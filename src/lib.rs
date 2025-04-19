@@ -14,6 +14,7 @@ use std::error::Error;
 use std::fmt::Display;
 use std::fs::{OpenOptions, exists};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::process::Command;
 use std::rc::Rc;
 use std::string::FromUtf8Error;
 use std::{fs, iter};
@@ -339,6 +340,39 @@ pub fn rewind_command(input_filename: &str, output_filename: &str) -> Result<(),
         delete_file(&temp_filename).unwrap_or(());
     }
     write_file(&temp_filename, &contents)?;
+    replace_file(&temp_filename, output_filename)?;
+    Ok(())
+}
+
+pub fn edit_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
+    // set up a rewound temp file for the editor
+    let orig_segments = load_file(input_filename)?;
+    let orig_rewound = rewind(orig_segments, &|s| base64_decode(s))?;
+    let orig_contents = combine(orig_rewound)?;
+    let temp_filename = create_temp_file(input_filename)?;
+    defer! {
+        delete_file(&temp_filename).unwrap_or(());
+    }
+    write_file(&temp_filename, &orig_contents)?;
+
+    // run the editor on the temp file
+    let status = Command::new("vi").arg(&temp_filename).spawn()?.wait()?;
+    if !status.success() {
+        return Err(AppError::from_str("edit command", "editor command failed"));
+    }
+
+    // see if the file was changed
+    let new_segments = load_file(&temp_filename)?;
+    let new_rewound = rewind(new_segments.clone(), &|s| base64_decode(s))?;
+    let new_contents = combine(new_rewound)?;
+    if orig_contents == new_contents {
+        return Ok(());
+    }
+
+    // encrypt the modified temp file and store it as the output file
+    let encrypted = encrypt(new_segments, &|s| base64_encode(s))?;
+    let encrypted_contents = combine(encrypted)?;
+    write_file(&temp_filename, &encrypted_contents)?;
     replace_file(&temp_filename, output_filename)?;
     Ok(())
 }
