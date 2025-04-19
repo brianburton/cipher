@@ -1,5 +1,6 @@
-#[cfg(test)]
 use super::*;
+
+use im::vector;
 
 #[test]
 fn test_marker_regex() {

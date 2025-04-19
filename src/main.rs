@@ -1,5 +1,10 @@
-use cipher::AppError;
+use app::AppError;
 use std::env;
+
+mod app;
+
+#[macro_use(defer)]
+extern crate scopeguard;
 
 fn main() -> Result<(), AppError> {
     let mut args = env::args();
@@ -12,7 +17,7 @@ fn main() -> Result<(), AppError> {
     let output_file = args.next().unwrap_or_else(|| input_file.clone());
 
     if command.as_str() == "cat" {
-        cipher::cat_command(&input_file)
+        app::cat_command(&input_file)
     } else if command.as_str() == "decrypt" {
         if input_file == output_file {
             return Err(AppError::from_str(
@@ -20,13 +25,13 @@ fn main() -> Result<(), AppError> {
                 "decrypt requires an output file name",
             ));
         }
-        cipher::decrypt_command(&input_file, &output_file)
+        app::decrypt_command(&input_file, &output_file)
     } else if command.as_str() == "encrypt" {
-        cipher::encrypt_command(&input_file, &output_file)
+        app::encrypt_command(&input_file, &output_file)
     } else if command.as_str() == "rewind" {
-        cipher::rewind_command(&input_file, &output_file)
+        app::rewind_command(&input_file, &output_file)
     } else if command.as_str() == "edit" {
-        cipher::edit_command(&input_file, &output_file)
+        app::edit_command(&input_file, &output_file)
     } else {
         Err(AppError::from_str(
             "usage",

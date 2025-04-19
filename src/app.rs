@@ -1,7 +1,5 @@
+#[cfg(test)]
 mod tests;
-
-#[macro_use(defer)]
-extern crate scopeguard;
 
 use base64::{DecodeError, Engine as _, engine::general_purpose::URL_SAFE};
 use derive_getters::Getters;
