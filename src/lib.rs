@@ -3,12 +3,10 @@ mod tests;
 #[macro_use(defer)]
 extern crate scopeguard;
 
-use scopeguard::guard;
-
 use base64::{DecodeError, Engine as _, engine::general_purpose::URL_SAFE};
 use derive_getters::Getters;
 use fs::read_to_string;
-use im::{Vector, vector};
+use im::Vector;
 use lazy_static::lazy_static;
 use rand::Rng;
 use regex::Regex;
@@ -94,7 +92,7 @@ fn random_chars() -> String {
 }
 
 fn create_temp_file(path: &str) -> Result<String, AppError> {
-    let orig = OpenOptions::new().read(true).open(&path)?;
+    let orig = OpenOptions::new().read(true).open(path)?;
     let mode = orig.metadata()?.permissions().mode();
     for _index in 0..50 {
         let temp_path = format!("_cipher_{}_{}", random_chars(), path);
@@ -242,7 +240,7 @@ fn parse_source(source: String) -> Result<SegmentMap, AppError> {
                         expected = None
                     }
                     None => {
-                        if content != "" {
+                        if !content.is_empty() {
                             let segment = Segment::Text(content);
                             answer.push_back(Rc::new(segment));
                         }
@@ -298,7 +296,7 @@ fn delete_file(temp_file: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn cat_command(input_filename: &String) -> Result<(), AppError> {
+pub fn cat_command(input_filename: &str) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
     let decrypted = decrypt(segments, &|s| base64_decode(s))?;
     let expanded = expand(decrypted)?;
@@ -306,7 +304,7 @@ pub fn cat_command(input_filename: &String) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn decrypt_command(input_filename: &String, output_filename: &String) -> Result<(), AppError> {
+pub fn decrypt_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
     let decrypted = decrypt(segments, &|s| base64_decode(s))?;
     let expanded = expand(decrypted)?;
@@ -315,11 +313,11 @@ pub fn decrypt_command(input_filename: &String, output_filename: &String) -> Res
         delete_file(&temp_filename).unwrap_or(());
     }
     write_file(&temp_filename, &expanded)?;
-    replace_file(&temp_filename, &output_filename)?;
+    replace_file(&temp_filename, output_filename)?;
     Ok(())
 }
 
-pub fn encrypt_command(input_filename: &String, output_filename: &String) -> Result<(), AppError> {
+pub fn encrypt_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
     let encrypted = encrypt(segments, &|s| base64_encode(s))?;
     let contents = combine(encrypted)?;
@@ -328,11 +326,11 @@ pub fn encrypt_command(input_filename: &String, output_filename: &String) -> Res
         delete_file(&temp_filename).unwrap_or(());
     }
     write_file(&temp_filename, &contents)?;
-    replace_file(&temp_filename, &output_filename)?;
+    replace_file(&temp_filename, output_filename)?;
     Ok(())
 }
 
-pub fn rewind_command(input_filename: &String, output_filename: &String) -> Result<(), AppError> {
+pub fn rewind_command(input_filename: &str, output_filename: &str) -> Result<(), AppError> {
     let segments = load_file(input_filename)?;
     let rewound = rewind(segments, &|s| base64_decode(s))?;
     let contents = combine(rewound)?;
@@ -341,6 +339,6 @@ pub fn rewind_command(input_filename: &String, output_filename: &String) -> Resu
         delete_file(&temp_filename).unwrap_or(());
     }
     write_file(&temp_filename, &contents)?;
-    replace_file(&temp_filename, &output_filename)?;
+    replace_file(&temp_filename, output_filename)?;
     Ok(())
 }
