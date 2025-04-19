@@ -1,11 +1,7 @@
-use app::AppError;
+use cipher::app;
+use cipher::app::AppError;
+use cipher::encryption;
 use std::env;
-
-mod app;
-mod encryption;
-
-#[macro_use(defer)]
-extern crate scopeguard;
 
 fn main() -> Result<(), AppError> {
     let mut args = env::args();

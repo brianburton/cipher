@@ -10,6 +10,11 @@ impl From<DecodeError> for AppError {
     }
 }
 
+/// Trait for structs that can encrypt and decrypt strings.
+/// Not all implementations are secure.  Be sure to check the doc comments
+/// for the function that creates them for details on the algorithm used.
+/// Encrypted strings are expected to be base64 encoded but can use other
+/// encodings as long as a round trip is possible between `encrypt()` and `decrypt().
 pub trait EncryptionSystem {
     fn encrypt(&self, plaintext: &str) -> Result<String, AppError>;
     fn decrypt(&self, ciphertext: &str) -> Result<String, AppError>;
@@ -28,20 +33,20 @@ impl EncryptionSystem for InsecureEncryptionSystem {
 }
 
 /// Decode the UTF-8 string represented by the Base64 encoded value in `source`.
-/// 
+///
 /// ```
-/// let original = String::new("hello, world!");
-/// let encoded = base64_encode(original.as_str());
-/// let decoded = base64_decode(encoded.as_str());
+/// let original = "hello, world!".to_string();
+/// let encoded = cipher::encryption::base64_encode(original.as_str()).unwrap();
+/// let decoded = cipher::encryption::base64_decode(encoded.as_str()).unwrap();
 /// assert_eq!(decoded, original);
 /// ```
-fn base64_encode(source: &str) -> Result<String, AppError> {
+pub fn base64_encode(source: &str) -> Result<String, AppError> {
     let r = URL_SAFE.encode(source.as_bytes());
     Ok(r)
 }
 
 /// Base64 encode the UTF-8 bytes comprising the provided string.
-fn base64_decode(source: &str) -> Result<String, AppError> {
+pub fn base64_decode(source: &str) -> Result<String, AppError> {
     let v = URL_SAFE.decode(source.as_bytes())?;
     let s = String::from_utf8(v)?;
     Ok(s)

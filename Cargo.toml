@@ -3,6 +3,14 @@ name = "cipher"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name="cipher"
+path="src/main.rs"
+
+[lib]
+name="cipher"
+path="src/lib.rs"
+
 [dependencies]
 regex = "1"
 im = "15.1.0"
