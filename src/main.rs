@@ -1,14 +1,17 @@
 use base64::{DecodeError, Engine as _, engine::general_purpose::URL_SAFE};
 use derive_getters::Getters;
+use fs::read_to_string;
 use im::{Vector, vector};
 use lazy_static::lazy_static;
-use regex::Captures;
+use rand::Rng;
 use regex::Regex;
 use std::error::Error;
 use std::fmt::Display;
-use std::fs;
+use std::fs::{OpenOptions, exists};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::rc::Rc;
 use std::string::FromUtf8Error;
+use std::{fs, iter};
 
 lazy_static! {
     static ref MARKER_RE: Regex = Regex::new(r"<<(/?(SECURE|CIPHER))>>").unwrap();
@@ -76,6 +79,31 @@ enum Segment {
 type SegmentMap = Vector<Rc<Segment>>;
 type CipherFn<'a> = dyn Fn(&String) -> Result<String, AppError> + 'a;
 
+fn random_chars() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut rng = rand::rng();
+    let one_char = || CHARSET[rng.random_range(0..CHARSET.len())] as char;
+    iter::repeat_with(one_char).take(7).collect()
+}
+
+fn create_temp_file(path: &str) -> Result<String, AppError> {
+    let orig = OpenOptions::new().read(true).open(&path)?;
+    let mode = orig.metadata()?.permissions().mode();
+    for _index in 0..50 {
+        let temp_path = format!("_cipher_{}_{}", random_chars(), path);
+        if exists(&temp_path)? {
+            continue;
+        }
+        let _file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .mode(mode)
+            .open(&temp_path)?;
+        return Ok(temp_path);
+    }
+    Err(AppError::from_str("output", "Failed to create temp file"))
+}
+
 fn base64_encode(source: &String) -> Result<String, AppError> {
     let r = URL_SAFE.encode(source.as_bytes());
     Ok(r)
@@ -126,7 +154,7 @@ fn decrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> 
             Segment::Secure(plain) => {
                 answer.push_back(Rc::new(Segment::Text(plain.clone())));
             }
-            _ => answer.push_back(Rc::clone(seg)),
+            Segment::Text(_) => answer.push_back(Rc::clone(seg)),
         }
     }
     Ok(answer)
@@ -144,11 +172,35 @@ fn expand(segments: SegmentMap) -> Result<String, AppError> {
             Segment::Secure(plain) => {
                 answer += plain;
             }
-            s => {
+            Segment::Cipher(_) => {
                 return Err(AppError::from_str(
                     "expand",
-                    format!("Encountered unexpected segment during expansion: {:?}", s).as_str(),
+                    "Encountered Cipher segment during expansion:",
                 ));
+            }
+        }
+    }
+    Ok(answer)
+}
+
+/// Combines a vector of segments into a String.  Markers are created for
+/// each segment.
+fn combine(segments: SegmentMap) -> Result<String, AppError> {
+    let mut answer = String::new();
+    for seg in segments.iter() {
+        match seg.as_ref() {
+            Segment::Text(text) => {
+                answer += text;
+            }
+            Segment::Secure(plain) => {
+                answer += "<<SECURE>>";
+                answer += plain;
+                answer += "<</SECURE>>";
+            }
+            Segment::Cipher(cipher) => {
+                answer += "<<CIPHER>>";
+                answer += cipher;
+                answer += "<</CIPHER>>";
             }
         }
     }
@@ -220,8 +272,23 @@ fn parse_source(source: String) -> Result<SegmentMap, AppError> {
 }
 
 fn load_file(filename: &str) -> Result<Vector<Rc<Segment>>, AppError> {
-    let source = fs::read_to_string(filename)?;
+    let source = read_to_string(filename)?;
     parse_source(source)
+}
+
+fn write_file(filename: &str, contents: &String) -> Result<(), AppError> {
+    Ok(fs::write(filename, contents)?)
+}
+
+fn replace_file(temp_file: &str, real_file: &str) -> Result<(), AppError> {
+    Ok(fs::rename(temp_file, real_file)?)
+}
+
+fn delete_file(temp_file: &str) -> Result<(), AppError> {
+    if exists(temp_file)? {
+        fs::remove_file(temp_file)?;
+    }
+    Ok(())
 }
 
 fn main() {
@@ -231,7 +298,6 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use im::Vector;
 
     #[test]
     fn test_marker_regex() {
