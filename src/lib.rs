@@ -1,5 +1,10 @@
 mod tests;
 
+#[macro_use(defer)]
+extern crate scopeguard;
+
+use scopeguard::guard;
+
 use base64::{DecodeError, Engine as _, engine::general_purpose::URL_SAFE};
 use derive_getters::Getters;
 use fs::read_to_string;
@@ -298,5 +303,31 @@ pub fn cat_command(input_filename: &String) -> Result<(), AppError> {
     let decrypted = decrypt(segments, &|s| base64_decode(s))?;
     let expanded = expand(decrypted)?;
     print!("{}", expanded);
+    Ok(())
+}
+
+pub fn encrypt_command(input_filename: &String, output_filename: &String) -> Result<(), AppError> {
+    let segments = load_file(input_filename)?;
+    let encrypted = encrypt(segments, &|s| base64_encode(s))?;
+    let contents = combine(encrypted)?;
+    let temp_filename = create_temp_file(input_filename)?;
+    defer! {
+        delete_file(&temp_filename).unwrap_or(());
+    }
+    write_file(&temp_filename, &contents)?;
+    replace_file(&temp_filename, &output_filename)?;
+    Ok(())
+}
+
+pub fn rewind_command(input_filename: &String, output_filename: &String) -> Result<(), AppError> {
+    let segments = load_file(input_filename)?;
+    let rewound = rewind(segments, &|s| base64_decode(s))?;
+    let contents = combine(rewound)?;
+    let temp_filename = create_temp_file(input_filename)?;
+    defer! {
+        delete_file(&temp_filename).unwrap_or(());
+    }
+    write_file(&temp_filename, &contents)?;
+    replace_file(&temp_filename, &output_filename)?;
     Ok(())
 }

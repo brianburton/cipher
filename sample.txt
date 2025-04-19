@@ -1,0 +1,6 @@
+root:
+  userid: "fred"
+  password: <<SECURE>>secret<</SECURE>>
+  credentials: <<SECURE>>
+    - otp: "some otp code"
+    - phone: "555-111-2222"<</SECURE>>
