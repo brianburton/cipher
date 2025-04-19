@@ -68,9 +68,9 @@ impl From<FromUtf8Error> for AppError {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Segment {
-    Plain(String),
+    Secure(String),
     Cipher(String),
-    Content(String),
+    Text(String),
 }
 
 type SegmentMap = Vector<Rc<Segment>>;
@@ -91,9 +91,23 @@ fn encrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> 
     let mut answer: SegmentMap = Vector::new();
     for seg in segments.iter() {
         match seg.as_ref() {
-            Segment::Plain(plain) => {
+            Segment::Secure(plain) => {
                 let cipher = op(plain)?;
                 answer.push_back(Rc::new(Segment::Cipher(cipher)));
+            }
+            _ => answer.push_back(Rc::clone(seg)),
+        }
+    }
+    Ok(answer)
+}
+
+fn rewind(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> {
+    let mut answer: SegmentMap = Vector::new();
+    for seg in segments.iter() {
+        match seg.as_ref() {
+            Segment::Cipher(cipher) => {
+                let plain = op(cipher)?;
+                answer.push_back(Rc::new(Segment::Secure(plain)));
             }
             _ => answer.push_back(Rc::clone(seg)),
         }
@@ -107,9 +121,35 @@ fn decrypt(segments: SegmentMap, op: &CipherFn) -> Result<SegmentMap, AppError> 
         match seg.as_ref() {
             Segment::Cipher(cipher) => {
                 let plain = op(cipher)?;
-                answer.push_back(Rc::new(Segment::Plain(plain)));
+                answer.push_back(Rc::new(Segment::Text(plain)));
+            }
+            Segment::Secure(plain) => {
+                answer.push_back(Rc::new(Segment::Text(plain.clone())));
             }
             _ => answer.push_back(Rc::clone(seg)),
+        }
+    }
+    Ok(answer)
+}
+
+/// Converts a vector of segments into a String.  The vector must only contain
+/// Text and Secure segments.
+fn expand(segments: SegmentMap) -> Result<String, AppError> {
+    let mut answer = String::new();
+    for seg in segments.iter() {
+        match seg.as_ref() {
+            Segment::Text(text) => {
+                answer += text;
+            }
+            Segment::Secure(plain) => {
+                answer += plain;
+            }
+            s => {
+                return Err(AppError::from_str(
+                    "expand",
+                    format!("Encountered unexpected segment during expansion: {:?}", s).as_str(),
+                ));
+            }
         }
     }
     Ok(answer)
@@ -135,7 +175,7 @@ fn parse_source(source: String) -> Result<SegmentMap, AppError> {
                             ));
                         }
                         let segment = if s == "/SECURE" {
-                            Segment::Plain(content)
+                            Segment::Secure(content)
                         } else {
                             Segment::Cipher(content)
                         };
@@ -144,7 +184,7 @@ fn parse_source(source: String) -> Result<SegmentMap, AppError> {
                     }
                     None => {
                         if content != "" {
-                            let segment = Segment::Content(content);
+                            let segment = Segment::Text(content);
                             answer.push_back(Rc::new(segment));
                         }
                         if marker == "SECURE" {
@@ -169,7 +209,7 @@ fn parse_source(source: String) -> Result<SegmentMap, AppError> {
                 }
                 if offset < source.len() {
                     let text = source[offset..].to_string();
-                    let segment = Segment::Content(text);
+                    let segment = Segment::Text(text);
                     answer.push_back(Rc::new(segment));
                 }
                 break;
@@ -206,12 +246,12 @@ To tell your name the livelong day<</CIPHER>>
 To an admiring bog!"
             .to_string();
         let answer = parse_source(source).unwrap();
-        let expected: SegmentMap = vector!(Segment::Plain("I'm nobody! ".to_string()),
-            Segment::Content("Who are you?\nAre you nobody, too?\nThen there's a ".to_string()),
-            Segment::Plain("pair of us - don't tell!".to_string()),
-            Segment::Content("\nThey'd banish us, you know.\n\n".to_string()),
+        let expected: SegmentMap = vector!(Segment::Secure("I'm nobody! ".to_string()),
+            Segment::Text("Who are you?\nAre you nobody, too?\nThen there's a ".to_string()),
+            Segment::Secure("pair of us - don't tell!".to_string()),
+            Segment::Text("\nThey'd banish us, you know.\n\n".to_string()),
             Segment::Cipher("How dreary to be somebody!\nHow public, like a frog\nTo tell your name the livelong day".to_string()),
-            Segment::Content("\nTo an admiring bog!".to_string())
+            Segment::Text("\nTo an admiring bog!".to_string())
         ).iter().map(|s| Rc::new(s.clone())).collect();
         assert_eq!(expected, answer);
     }
@@ -223,5 +263,70 @@ To an admiring bog!"
         assert_eq!(encoded, "aGVsbG8gd29ybGQ=".to_string());
         let decoded = base64_decode(&encoded).unwrap();
         assert_eq!(source, decoded);
+    }
+
+    #[test]
+    fn test_encrypt() {
+        let segments = vector!(
+            Rc::new(Segment::Text("abc".to_string())),
+            Rc::new(Segment::Secure("def".to_string())),
+            Rc::new(Segment::Cipher("ghi".to_string())),
+            Rc::new(Segment::Text("xyz".to_string()))
+        );
+        let expected = vector!(
+            Rc::new(Segment::Text("abc".to_string())),
+            Rc::new(Segment::Cipher("ZGVm".to_string())),
+            Rc::new(Segment::Cipher("ghi".to_string())),
+            Rc::new(Segment::Text("xyz".to_string()))
+        );
+        let expanded = encrypt(segments, &|s| base64_encode(s)).unwrap();
+        assert_eq!(expanded, expected);
+    }
+
+    #[test]
+    fn test_rewind() {
+        let segments = vector!(
+            Rc::new(Segment::Text("abc".to_string())),
+            Rc::new(Segment::Cipher("ZGVm".to_string())),
+            Rc::new(Segment::Secure("ghi".to_string())),
+            Rc::new(Segment::Text("xyz".to_string()))
+        );
+        let expected = vector!(
+            Rc::new(Segment::Text("abc".to_string())),
+            Rc::new(Segment::Secure("def".to_string())),
+            Rc::new(Segment::Secure("ghi".to_string())),
+            Rc::new(Segment::Text("xyz".to_string()))
+        );
+        let expanded = rewind(segments, &|s| base64_decode(s)).unwrap();
+        assert_eq!(expanded, expected);
+    }
+
+    #[test]
+    fn test_decrypt() {
+        let segments = vector!(
+            Rc::new(Segment::Text("abc".to_string())),
+            Rc::new(Segment::Cipher("ZGVm".to_string())),
+            Rc::new(Segment::Secure("ghi".to_string())),
+            Rc::new(Segment::Text("xyz".to_string()))
+        );
+        let expected = vector!(
+            Rc::new(Segment::Text("abc".to_string())),
+            Rc::new(Segment::Text("def".to_string())),
+            Rc::new(Segment::Text("ghi".to_string())),
+            Rc::new(Segment::Text("xyz".to_string()))
+        );
+        let expanded = decrypt(segments, &|s| base64_decode(s)).unwrap();
+        assert_eq!(expanded, expected);
+    }
+
+    #[test]
+    fn test_expand() {
+        let segments = vector!(
+            Rc::new(Segment::Text("abc".to_string())),
+            Rc::new(Segment::Secure("def".to_string())),
+            Rc::new(Segment::Text("xyz".to_string()))
+        );
+        let expanded = expand(segments).unwrap();
+        assert_eq!(expanded, "abcdefxyz".to_string());
     }
 }
