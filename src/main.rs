@@ -13,7 +13,11 @@ fn main() -> Result<(), AppError> {
         .ok_or_else(|| AppError::from_str("usage", "missing file name"))?;
     let output_file = args.next().unwrap_or_else(|| input_file.clone());
 
-    let encryption_system = encryption::new_insecure_encryption()?;
+    //encryption::new_insecure_encryption()?;
+    let encryption_system = encryption::create_kms_encryption(
+        "arn:aws:kms:us-east-2:128755427438:key/fa290aed-9cfa-475f-973e-1dedb9fc6fff",
+    )?;
+
     if command.as_str() == "cat" {
         app::cat_command(&input_file, encryption_system.as_ref())
     } else if command.as_str() == "decrypt" {
