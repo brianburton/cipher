@@ -2,6 +2,7 @@ use cipher::app;
 use cipher::app::AppError;
 use cipher::encryption;
 use std::env;
+use std::string::ToString;
 
 fn main() -> Result<(), AppError> {
     let mut args = env::args();
@@ -13,10 +14,11 @@ fn main() -> Result<(), AppError> {
         .ok_or_else(|| AppError::from_str("usage", "missing file name"))?;
     let output_file = args.next().unwrap_or_else(|| input_file.clone());
 
-    //encryption::new_insecure_encryption()?;
-    let encryption_system = encryption::create_kms_encryption(
-        "arn:aws:kms:us-east-2:128755427438:key/fa290aed-9cfa-475f-973e-1dedb9fc6fff",
-    )?;
+    let encryption_system = match env::var("CIPHER_KEY_ARN").ok() {
+        Some(s) if s == "DEBUG".to_string() => encryption::new_insecure_encryption()?,
+        Some(key) => encryption::create_kms_encryption(key.as_str())?,
+        _ => return Err(AppError::from_str("CIPHER_KEY_ARN", "no key provided")),
+    };
 
     if command.as_str() == "cat" {
         app::cat_command(&input_file, encryption_system.as_ref())

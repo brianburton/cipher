@@ -88,7 +88,6 @@ pub fn new_insecure_encryption() -> Result<Box<dyn EncryptionSystem>, AppError> 
 
 struct AwsEncryptionSystem {
     esdk_client: esdk_client::Client,
-    mpl: mpl_client::Client,
     kms_keyring: KeyringRef,
 }
 
@@ -133,7 +132,7 @@ impl EncryptionSystem for AwsEncryptionSystem {
             .plaintext
             .ok_or_else(|| {
                 AppError::from_str(
-                    "aws encrypt",
+                    "aws decrypt",
                     "Unable to unwrap plaintext from decryption response",
                 )
             })?
@@ -163,7 +162,6 @@ async fn create_kms_encryption_async(key_id: &str) -> Result<Box<dyn EncryptionS
 
     Ok(Box::new(AwsEncryptionSystem {
         esdk_client,
-        mpl,
         kms_keyring,
     }))
 }

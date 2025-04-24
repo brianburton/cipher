@@ -20,6 +20,6 @@ base64="0.22.1"
 rand = "0.9.1"
 scopeguard = "1.2.0"
 trpl = "0.2.0"
-aws-config = { version = "1.5.15" }
-aws-sdk-kms = { version = "1.57.0" }
-aws-esdk = { version = "1.0.0" }
+aws-config = "1"
+aws-sdk-kms = "1"
+aws-esdk = "1"
