@@ -23,7 +23,8 @@ export SSL_CERT_FILE=$(brew --prefix)/etc/openssl@3/cert.pem
 Currently the program accepts either two or three command line arguments.
 The first is the command to execute.  The second is the input file to process.
 The third is optional and specifies the file to write output to if different
-than the input file.
+than the input file. A hyphen `-` can be used as either the input file name
+to read from `stdin` or the output file name to print to `stdout`.
 
 Valid commands are:
 

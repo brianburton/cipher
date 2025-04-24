@@ -11,6 +11,7 @@ use regex::Regex;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::{OpenOptions, exists};
+use std::io::Read;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::process::Command;
 use std::rc::Rc;
@@ -258,7 +259,13 @@ fn parse_source(source: String) -> Result<Segments, AppError> {
 }
 
 fn load_file(filename: &str) -> Result<Vector<Rc<Segment>>, AppError> {
-    let source = read_to_string(filename)?;
+    let mut source: String;
+    if filename == "-" {
+        source = String::new();
+        std::io::stdin().read_to_string(&mut source)?;
+    } else {
+        source = read_to_string(filename)?;
+    }
     parse_source(source)
 }
 
@@ -268,6 +275,15 @@ fn write_file(filename: &str, contents: &String) -> Result<(), AppError> {
 
 fn replace_file(temp_file: &str, real_file: &str) -> Result<(), AppError> {
     Ok(fs::rename(temp_file, real_file)?)
+}
+
+fn write_result(temp_file: &str, real_file: &str) -> Result<(), AppError> {
+    if real_file == "-" {
+        let s = read_to_string(temp_file)?;
+        Ok(print!("{}", s))
+    } else {
+        replace_file(temp_file, real_file)
+    }
 }
 
 fn delete_file(temp_file: &str) -> Result<(), AppError> {
@@ -298,7 +314,7 @@ pub fn decrypt_command(
         delete_file(&temp_filename).unwrap_or(());
     }
     write_file(&temp_filename, &expanded)?;
-    replace_file(&temp_filename, output_filename)?;
+    write_result(&temp_filename, output_filename)?;
     Ok(())
 }
 
@@ -315,7 +331,7 @@ pub fn encrypt_command(
         delete_file(&temp_filename).unwrap_or(());
     }
     write_file(&temp_filename, &contents)?;
-    replace_file(&temp_filename, output_filename)?;
+    write_result(&temp_filename, output_filename)?;
     Ok(())
 }
 
@@ -332,7 +348,7 @@ pub fn rewind_command(
         delete_file(&temp_filename).unwrap_or(());
     }
     write_file(&temp_filename, &contents)?;
-    replace_file(&temp_filename, output_filename)?;
+    write_result(&temp_filename, output_filename)?;
     Ok(())
 }
 
@@ -369,6 +385,6 @@ pub fn edit_command(
     let encrypted = encrypt(new_segments, system)?;
     let encrypted_contents = combine(encrypted)?;
     write_file(&temp_filename, &encrypted_contents)?;
-    replace_file(&temp_filename, output_filename)?;
+    write_result(&temp_filename, output_filename)?;
     Ok(())
 }
