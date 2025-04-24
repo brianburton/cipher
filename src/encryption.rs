@@ -144,28 +144,30 @@ impl EncryptionSystem for AwsEncryptionSystem {
     }
 }
 
-pub fn create_kms_encryption(key_id: &str) -> Result<Box<dyn EncryptionSystem>, AppError> {
+async fn create_kms_encryption_async(key_id: &str) -> Result<Box<dyn EncryptionSystem>, AppError> {
     let esdk_config = AwsEncryptionSdkConfig::builder().build()?;
     let esdk_client = esdk_client::Client::from_conf(esdk_config)?;
 
-    let sdk_config =
-        trpl::run(async { aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await });
+    let sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
     let kms_client = aws_sdk_kms::Client::new(&sdk_config);
 
     let mpl_config = MaterialProvidersConfig::builder().build()?;
     let mpl = mpl_client::Client::from_conf(mpl_config)?;
 
-    let kms_keyring = trpl::run(async {
-        mpl.create_aws_kms_keyring()
-            .kms_client(kms_client.clone())
-            .kms_key_id(key_id)
-            .send()
-            .await
-    })?;
+    let kms_keyring = mpl
+        .create_aws_kms_keyring()
+        .kms_client(kms_client.clone())
+        .kms_key_id(key_id)
+        .send()
+        .await?;
 
     Ok(Box::new(AwsEncryptionSystem {
         esdk_client,
         mpl,
         kms_keyring,
     }))
+}
+
+pub fn create_kms_encryption(key_id: &str) -> Result<Box<dyn EncryptionSystem>, AppError> {
+    trpl::run(async { create_kms_encryption_async(key_id).await })
 }

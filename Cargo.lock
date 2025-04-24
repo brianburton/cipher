@@ -116,7 +116,7 @@ checksum = "e23511801560ce8bc047657b0a8f15863f9dc27f52fac5e5c57c4e40e16afaee"
 dependencies = [
  "aws-config",
  "aws-lc-rs",
- "aws-lc-sys 0.25.1",
+ "aws-lc-sys",
  "aws-sdk-dynamodb",
  "aws-sdk-kms",
  "aws-smithy-runtime-api",
@@ -133,11 +133,12 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.13.0"
+version = "1.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b756939cb2f8dc900aa6dcd505e6e2428e9cae7ff7b028c49e3946efa70878"
+checksum = "4c2b7ddaa2c56a367ad27a094ad8ef4faacf8a617c2575acb2ba88949df999ca"
 dependencies = [
- "aws-lc-sys 0.28.1",
+ "aws-lc-sys",
+ "paste",
  "untrusted 0.7.1",
  "zeroize",
 ]
@@ -154,19 +155,6 @@ dependencies = [
  "dunce",
  "fs_extra",
  "paste",
-]
-
-[[package]]
-name = "aws-lc-sys"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ddeb19ee86cb16ecfc871e5b0660aff6285760957aaedda6284cf0e790d3769"
-dependencies = [
- "bindgen",
- "cc",
- "cmake",
- "dunce",
- "fs_extra",
 ]
 
 [[package]]
