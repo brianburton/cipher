@@ -35,3 +35,41 @@ Valid commands are:
 
 The KMS key to use is defined by setting the environment variable `CIPHER_KEY_ARN`.
 Setting it to `DEBUG` causes the program to simply use base64 encoding instead of using true encryption.  **DO NOT USE DEBUG FOR REAL DATA**
+
+## Testing with localstack
+
+To use [localstack](https://github.com/localstack/localstack) for testing you can set the `CIPHER_BASE_URL` to the endpoint address of your localstack container.
+For example:
+
+```shell
+$ docker ps
+CONTAINER ID   IMAGE                   COMMAND                  CREATED      STATUS                PORTS                                                                    NAMES
+74e1d8333b9d   localstack/localstack   "docker-entrypoint.sh"   3 days ago   Up 3 days (healthy)   127.0.0.1:4510-4560->4510-4560/tcp, 127.0.0.1:4566->4566/tcp, 5678/tcp   localstack-main
+$ awslocal kms list-keys
+{
+    "Keys": [
+        {
+            "KeyId": "faa80122-88a6-4c9b-9cbc-3fdf91674a5e",
+            "KeyArn": "arn:aws:kms:us-east-2:000000000000:key/faa80122-88a6-4c9b-9cbc-3fdf91674a5e"
+        }
+    ]
+}
+$ export CIPHER_BASE_URL="http://localhost:4566"
+$ export CIPHER_KEY_ARN="arn:aws:kms:us-east-2:000000000000:key/faa80122-88a6-4c9b-9cbc-3fdf91674a5e"
+$ cargo run -- encrypt sample.txt encrypted.txt
+$ $ cat _encrypted.txt
+root:
+  userid: "fred"
+  password: <<CIPHER>>... lots of base64 ...<</CIPHER>>
+  credentials: <<CIPHER>>... lots of base64 ...<</CIPHER>>
+```
+
+## Installation
+
+To build and install for local use:
+
+```shell
+cargo install --path .
+```
+
+Which should install the compiled binary to `$HOME/.cargo/bin/cipher`.

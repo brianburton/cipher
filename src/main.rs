@@ -14,9 +14,11 @@ fn main() -> Result<(), AppError> {
         .ok_or_else(|| AppError::from_str("usage", "missing file name"))?;
     let output_file = args.next().unwrap_or_else(|| input_file.clone());
 
+    let base_url = env::var("CIPHER_BASE_URL").ok();
+
     let encryption_system = match env::var("CIPHER_KEY_ARN").ok() {
         Some(s) if s == "DEBUG".to_string() => encryption::new_insecure_encryption()?,
-        Some(key) => encryption::create_kms_encryption(key.as_str())?,
+        Some(key) => encryption::create_kms_encryption(key.as_str(), &base_url)?,
         _ => return Err(AppError::from_str("CIPHER_KEY_ARN", "no key provided")),
     };
 
