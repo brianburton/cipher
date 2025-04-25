@@ -3,6 +3,15 @@ use super::*;
 use im::vector;
 
 #[test]
+fn test_split_path() {
+    assert_eq!(("", "a"), split_path("a"));
+    assert_eq!(("/", "a"), split_path("/a"));
+    assert_eq!(("a/", "bc"), split_path("a/bc"));
+    assert_eq!(("/a/", "bc"), split_path("/a/bc"));
+    assert_eq!(("/a/bc/", "def"), split_path("/a/bc/def"));
+}
+
+#[test]
 fn test_marker_regex() {
     let source = "<<SECURE>>I'm nobody! <</SECURE>>Who are you?
 Are you nobody, too?

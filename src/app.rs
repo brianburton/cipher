@@ -86,11 +86,28 @@ fn random_chars() -> String {
     iter::repeat_with(one_char).take(7).collect()
 }
 
+fn split_path(path: &str) -> (&str, &str) {
+    match path.rfind('/') {
+        Some(i) => (&path[..=i], &path[i + 1..]),
+        None => ("", path),
+    }
+}
+
+fn get_temp_file_specs(path: &str) -> Result<(u32, &str, &str), AppError> {
+    if path == STDIO {
+        Ok((0o600, "", "temp.txt"))
+    } else {
+        let (dir, name) = split_path(path);
+        let orig = OpenOptions::new().read(true).open(path)?;
+        let mode = orig.metadata()?.permissions().mode();
+        Ok((mode, dir, name))
+    }
+}
+
 fn create_temp_file(path: &str) -> Result<String, AppError> {
-    let orig = OpenOptions::new().read(true).open(path)?;
-    let mode = orig.metadata()?.permissions().mode();
+    let (mode, dir, name) = get_temp_file_specs(path)?;
     for _index in 0..50 {
-        let temp_path = format!("_cipher_{}_{}", random_chars(), path);
+        let temp_path = format!("{}_cipher_{}_{}", dir, random_chars(), name);
         if exists(&temp_path)? {
             continue;
         }
