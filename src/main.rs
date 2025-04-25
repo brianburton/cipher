@@ -24,13 +24,14 @@ fn main() -> Result<(), AppError> {
 
     if command.as_str() == "cat" {
         app::cat_command(&input_file, encryption_system.as_ref())
+    } else if command.as_str() == "decrypt" && output_file == app::STDIO {
+        app::cat_command(&input_file, encryption_system.as_ref())
+    } else if command.as_str() == "decrypt" && output_file == input_file {
+        Err(AppError::from_str(
+            "usage",
+            "decrypt requires an output file name",
+        ))
     } else if command.as_str() == "decrypt" {
-        if input_file == output_file {
-            return Err(AppError::from_str(
-                "usage",
-                "decrypt requires an output file name",
-            ));
-        }
         app::decrypt_command(&input_file, &output_file, encryption_system.as_ref())
     } else if command.as_str() == "encrypt" {
         app::encrypt_command(&input_file, &output_file, encryption_system.as_ref())

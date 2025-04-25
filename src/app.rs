@@ -18,6 +18,8 @@ use std::rc::Rc;
 use std::string::FromUtf8Error;
 use std::{fs, iter};
 
+pub const STDIO: &str = "-";
+
 lazy_static! {
     static ref MARKER_RE: Regex = Regex::new(r"<<(/?(SECURE|CIPHER))>>").unwrap();
 }
@@ -260,7 +262,7 @@ fn parse_source(source: String) -> Result<Segments, AppError> {
 
 fn load_file(filename: &str) -> Result<Vector<Rc<Segment>>, AppError> {
     let mut source: String;
-    if filename == "-" {
+    if filename == STDIO {
         source = String::new();
         std::io::stdin().read_to_string(&mut source)?;
     } else {
@@ -278,7 +280,7 @@ fn replace_file(temp_file: &str, real_file: &str) -> Result<(), AppError> {
 }
 
 fn write_result(temp_file: &str, real_file: &str) -> Result<(), AppError> {
-    if real_file == "-" {
+    if real_file == STDIO {
         let s = read_to_string(temp_file)?;
         Ok(print!("{}", s))
     } else {
